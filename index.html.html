@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connected Speech Phonetics Lab: UK /t/ vs. US Alveolar Tap [ɾ]</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono for crisp IPA rendering -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            ipa: ['JetBrains Mono', 'DejaVu Sans', 'Lucida Sans Unicode', 'Arial Unicode MS', 'monospace'],
+          },
+          colors: {
+            lab: {
+              navy: '#0F172A',
+              slate: '#334155',
+              canvas: '#F8FAFC',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Waveform visualizer bar animation during active audio playback */
+    @keyframes barOscillate {
+      0%, 100% {
+        transform: scaleY(0.26);
+      }
+      50% {
+        transform: scaleY(1);
+      }
+    }
+
+    .waveform-bar {
+      transform-origin: center;
+      transform: scaleY(0.26);
+      transition: transform 0.18s ease, background-color 0.2s ease;
+    }
+
+    .is-playing .waveform-bar {
+      animation: barOscillate 0.6s ease-in-out infinite;
+    }
+
+    .is-playing .waveform-bar:nth-child(1) { animation-delay: 0.00s; }
+    .is-playing .waveform-bar:nth-child(2) { animation-delay: 0.10s; }
+    .is-playing .waveform-bar:nth-child(3) { animation-delay: 0.22s; }
+    .is-playing .waveform-bar:nth-child(4) { animation-delay: 0.06s; }
+    .is-playing .waveform-bar:nth-child(5) { animation-delay: 0.18s; }
+    .is-playing .waveform-bar:nth-child(6) { animation-delay: 0.28s; }
+    .is-playing .waveform-bar:nth-child(7) { animation-delay: 0.14s; }
+    .is-playing .waveform-bar:nth-child(8) { animation-delay: 0.24s; }
+
+    /* Smooth border and elevation transitions on comparison cards */
+    .phonetic-card {
+      transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease;
+    }
+  </style>
+</head>
+<body class="bg-[#F8FAFC] text-[#334155] font-sans antialiased selection:bg-indigo-100 selection:text-[#0F172A]">
+
+  <!-- University Laboratory Header -->
+  <header class="bg-[#0F172A] text-white border-b border-slate-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-xs font-medium text-indigo-300 tracking-wide mb-2.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+            UNIVERSITY LINGUISTICS LABORATORY &bull; PHONETICS &amp; PHONOLOGY
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            Connected Speech Phonetics Lab
+          </h1>
+          <p class="mt-1.5 text-sm sm:text-base text-slate-300">
+            Intervocalic <span class="font-ipa text-indigo-300 font-semibold">/t/</span> Realization &amp; Catenation in <span class="font-ipa text-white font-semibold">'a lot of'</span>
+          </p>
+        </div>
+
+        <!-- Live Engine Readiness Badge -->
+        <div class="self-start lg:self-center shrink-0">
+          <div id="engine-status-pill" class="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-slate-800/90 border border-slate-700 text-xs font-medium text-slate-200">
+            <span id="engine-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span id="engine-status-label">Initializing Audio Engines...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+
+    <!-- Controls Bar: Context Mode Toggle + Audio Engine Toggle -->
+    <section aria-label="Laboratory Controls" class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+
+        <!-- Context Mode Toggle (5 cols on lg) -->
+        <div class="lg:col-span-5 flex flex-col sm:flex-row sm:items-center gap-2.5">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500 shrink-0">
+            Context Mode:
+          </span>
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/80 w-full sm:w-auto" role="group" aria-label="Context Mode Selector">
+            <button
+              id="btn-mode-phrase"
+              type="button"
+              aria-pressed="true"
+              class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]"
+            >
+              Isolated Phrase
+            </button>
+            <button
+              id="btn-mode-sentence"
+              type="button"
+              aria-pressed="false"
+              class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]"
+            >
+              Connected Sentence
+            </button>
+          </div>
+        </div>
+
+        <!-- Audio Engine Toggle (7 cols on lg) -->
+        <div class="lg:col-span-7 flex flex-col sm:flex-row sm:items-center lg:justify-end gap-2.5">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500 shrink-0">
+            Audio Engine:
+          </span>
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/80 w-full sm:w-auto" role="group" aria-label="Audio Engine Selector">
+            <button
+              id="btn-engine-hybrid"
+              type="button"
+              aria-pressed="true"
+              class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]"
+            >
+              Hybrid (Browser TTS + Acoustic Fallback)
+            </button>
+            <button
+              id="btn-engine-synth"
+              type="button"
+              aria-pressed="false"
+              class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]"
+            >
+              Acoustic Formant Synthesizer
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Optional Voice Inspection Sub-bar -->
+      <div class="mt-4 pt-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-slate-500">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div class="flex items-center gap-2">
+            <label for="select-voice-uk" class="font-semibold text-[#334155]">Audio A Voice:</label>
+            <select id="select-voice-uk" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Detecting en-GB voices...</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="select-voice-us" class="font-semibold text-[#334155]">Audio B Voice:</label>
+            <select id="select-voice-us" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-[#334155] focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Detecting en-US voices...</option>
+            </select>
+          </div>
+        </div>
+        <div id="context-preview-tag" class="font-ipa text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/70 self-start sm:self-center">
+          Target: "a lot of"
+        </div>
+      </div>
+    </section>
+
+    <!-- Sequential Comparison Action Bar -->
+    <section aria-label="Sequential Comparison Controls" class="bg-[#0F172A] text-white rounded-2xl shadow-sm p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          id="btn-compare-sequential"
+          type="button"
+          class="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition cursor-pointer min-h-[44px]"
+        >
+          <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+          </svg>
+          <span id="label-compare-sequential">Compare A &rarr; B (Sequential)</span>
+        </button>
+
+        <button
+          id="btn-stop-playback"
+          type="button"
+          disabled
+          class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-45 disabled:pointer-events-none text-slate-100 border border-slate-700 font-semibold text-sm transition cursor-pointer min-h-[44px]"
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="4" y="4" width="12" height="12" rx="1.5" />
+          </svg>
+          <span>Stop</span>
+        </button>
+      </div>
+
+      <!-- Visual Sequence Progress Indicator -->
+      <div class="flex items-center gap-2.5 text-xs">
+        <span id="seq-pill-a" class="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-400 font-medium transition">
+          1. Audio A (UK)
+        </span>
+        <span id="seq-pill-pause" class="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-400 font-ipa text-[11px] transition">
+          800ms pause
+        </span>
+        <span id="seq-pill-b" class="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-400 font-medium transition">
+          2. Audio B (US)
+        </span>
+      </div>
+    </section>
+
+    <!-- Side-by-Side Comparison Cards (Audio A vs. Audio B) -->
+    <section aria-label="Side-by-Side Dialect Comparison" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- Card 1: Audio A — British English (RP) -->
+      <article
+        id="card-audio-a"
+        class="phonetic-card bg-white rounded-2xl border-2 border-slate-200/90 shadow-sm p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden"
+      >
+        <div class="absolute top-0 inset-x-0 h-1.5 bg-blue-600"></div>
+
+        <div>
+          <!-- Card Header & Waveform Visualizer -->
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <span class="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 text-xs font-semibold tracking-wide">
+                en-GB &bull; Received Pronunciation
+              </span>
+              <h2 class="mt-2.5 text-xl font-bold text-[#0F172A]">
+                Audio A: British English (RP)
+              </h2>
+            </div>
+
+            <!-- Interactive Animated Waveform Bar Visualizer -->
+            <div
+              id="visualizer-uk"
+              class="flex items-center gap-1 h-9 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 shrink-0"
+              aria-label="Audio A Waveform Visualizer"
+            >
+              <span class="waveform-bar w-1 h-4 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-6 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-3.5 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-6 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-4.5 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-5 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-3 rounded-full bg-blue-600"></span>
+              <span class="waveform-bar w-1 h-4.5 rounded-full bg-blue-600"></span>
+            </div>
+          </div>
+
+          <!-- Orthographic & Large IPA Transcription Block -->
+          <div class="mt-5 p-4 rounded-xl bg-[#F8FAFC] border border-slate-200/90">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Utterance &amp; Phonemic Transcription
+            </div>
+            <p id="utterance-uk" class="mt-1 text-lg sm:text-xl font-bold text-[#0F172A]">
+              a lo<span class="text-blue-600 underline decoration-blue-300 decoration-2 underline-offset-4">t o</span>f
+            </p>
+
+            <div class="mt-3 pt-3 border-t border-slate-200/80 space-y-2">
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="text-xs font-medium text-slate-500">Citation IPA:</span>
+                <span id="ipa-citation-uk" class="font-ipa text-lg sm:text-xl font-bold text-blue-700">
+                  /ə ˈlɒt əv/
+                </span>
+              </div>
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="text-xs font-medium text-slate-500">Catenated Syllabification:</span>
+                <span id="ipa-catenated-uk" class="font-ipa text-sm sm:text-base font-semibold text-[#334155] bg-blue-50/80 px-2.5 py-0.5 rounded-md border border-blue-100">
+                  /ə ˈlɒ.təv/
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Phonetic Cues -->
+          <div class="mt-4 space-y-2.5">
+            <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-xs leading-relaxed">
+              <span class="font-bold text-[#0F172A]">Vowel:</span>
+              <span class="text-[#334155]">Short open back rounded <code class="font-ipa font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">/ɒ/</code></span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-xs leading-relaxed">
+              <span class="font-bold text-[#0F172A]">Consonant:</span>
+              <span class="text-[#334155]">Voiceless alveolar plosive <code class="font-ipa font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">[t]</code> &mdash; complete closure, voiceless release, linked directly into <code class="font-ipa font-semibold text-[#0F172A]">/əv/</code></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Playback Buttons -->
+        <div class="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            data-accent="uk"
+            data-rate="1.0"
+            class="btn-play-single inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer min-h-[44px]"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+            </svg>
+            <span>Play Normal (1.0x)</span>
+          </button>
+
+          <button
+            type="button"
+            data-accent="uk"
+            data-rate="0.65"
+            class="btn-play-single inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 active:scale-[0.99] text-blue-800 border border-blue-200 font-semibold text-xs sm:text-sm transition cursor-pointer min-h-[44px]"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Play Slow (0.65x)</span>
+          </button>
+        </div>
+      </article>
+
+      <!-- Card 2: Audio B — General American (GA) -->
+      <article
+        id="card-audio-b"
+        class="phonetic-card bg-white rounded-2xl border-2 border-slate-200/90 shadow-sm p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden"
+      >
+        <div class="absolute top-0 inset-x-0 h-1.5 bg-indigo-600"></div>
+
+        <div>
+          <!-- Card Header & Waveform Visualizer -->
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <span class="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-semibold tracking-wide">
+                en-US &bull; General American
+              </span>
+              <h2 class="mt-2.5 text-xl font-bold text-[#0F172A]">
+                Audio B: General American (GA)
+              </h2>
+            </div>
+
+            <!-- Interactive Animated Waveform Bar Visualizer -->
+            <div
+              id="visualizer-us"
+              class="flex items-center gap-1 h-9 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 shrink-0"
+              aria-label="Audio B Waveform Visualizer"
+            >
+              <span class="waveform-bar w-1 h-4 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-6 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-3.5 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-6 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-4.5 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-5 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-3 rounded-full bg-indigo-600"></span>
+              <span class="waveform-bar w-1 h-4.5 rounded-full bg-indigo-600"></span>
+            </div>
+          </div>
+
+          <!-- Orthographic & Large IPA Transcription Block -->
+          <div class="mt-5 p-4 rounded-xl bg-[#F8FAFC] border border-slate-200/90">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Utterance &amp; Narrow Phonetic Transcription
+            </div>
+            <p id="utterance-us" class="mt-1 text-lg sm:text-xl font-bold text-[#0F172A]">
+              a lo<span class="text-indigo-600 underline decoration-indigo-300 decoration-2 underline-offset-4">t o</span>f
+            </p>
+
+            <div class="mt-3 pt-3 border-t border-slate-200/80 space-y-2">
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="text-xs font-medium text-slate-500">Narrow IPA:</span>
+                <span id="ipa-citation-us" class="font-ipa text-lg sm:text-xl font-bold text-indigo-700">
+                  /ə ˈlɑːɾ əv/
+                </span>
+              </div>
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="text-xs font-medium text-slate-500">Catenated Syllabification:</span>
+                <span id="ipa-catenated-us" class="font-ipa text-sm sm:text-base font-semibold text-[#334155] bg-indigo-50/80 px-2.5 py-0.5 rounded-md border border-indigo-100">
+                  /ə ˈlɑː.ɾəv/
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Phonetic Cues -->
+          <div class="mt-4 space-y-2.5">
+            <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-xs leading-relaxed">
+              <span class="font-bold text-[#0F172A]">Vowel:</span>
+              <span class="text-[#334155]">Open back unrounded <code class="font-ipa font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">/ɑː/</code></span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-xs leading-relaxed">
+              <span class="font-bold text-[#0F172A]">Consonant:</span>
+              <span class="text-[#334155]">Voiced alveolar tap <code class="font-ipa font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">[ɾ]</code> &mdash; rapid single tap of tongue tip against alveolar ridge, continuous voicing</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Playback Buttons -->
+        <div class="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            data-accent="us"
+            data-rate="1.0"
+            class="btn-play-single inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer min-h-[44px]"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+            </svg>
+            <span>Play Normal (1.0x)</span>
+          </button>
+
+          <button
+            type="button"
+            data-accent="us"
+            data-rate="0.65"
+            class="btn-play-single inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 active:scale-[0.99] text-indigo-800 border border-indigo-200 font-semibold text-xs sm:text-sm transition cursor-pointer min-h-[44px]"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Play Slow (0.65x)</span>
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <!-- Acoustic & Articulatory Reference Section -->
+    <section aria-label="Acoustic and Articulatory Reference" class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6 space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-100">
+        <div>
+          <h2 class="text-lg sm:text-xl font-bold text-[#0F172A]">
+            Acoustic &amp; Articulatory Reference
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Time-domain acoustic waveform schematic and structural phonological comparison across RP and GA
+          </p>
+        </div>
+        <span class="self-start sm:self-center font-ipa text-xs px-3 py-1 rounded-lg bg-slate-100 text-[#334155] font-semibold">
+          Environment: V&#769; + /t/ + V&#774;
+        </span>
+      </div>
+
+      <!-- Custom SVG Acoustic Waveform & Closure Schematic -->
+      <div class="rounded-xl border border-slate-200/90 bg-[#F8FAFC] p-4 sm:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+            Acoustic Envelope &amp; Glottal Voicing Schematic (<span class="font-ipa normal-case">lot + of</span>)
+          </h3>
+          <span class="text-[11px] text-slate-500">
+            Schematic time-amplitude contrast (not to fixed scale)
+          </span>
+        </div>
+
+        <div class="w-full overflow-hidden">
+          <svg
+            viewBox="0 0 920 275"
+            class="w-full h-auto block"
+            role="img"
+            aria-label="Acoustic waveform schematic contrasting British voiceless stop gap and release burst against American voiced alveolar tap amplitude dip"
+          >
+            <!-- Background Panels -->
+            <rect x="10" y="10" width="435" height="255" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" />
+            <rect x="475" y="10" width="435" height="255" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" />
+
+            <!-- Left Panel Header: British RP -->
+            <rect x="26" y="24" width="190" height="24" rx="6" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1" />
+            <text x="121" y="40" text-anchor="middle" fill="#1D4ED8" font-family="Inter, sans-serif" font-size="11.5" font-weight="700">
+              Audio A: British RP /lɒ.təv/
+            </text>
+
+            <!-- Left Panel Acoustic Regions -->
+            <!-- Vowel /ɒ/ zone -->
+            <rect x="28" y="62" width="135" height="122" rx="6" fill="#EFF6FF" fill-opacity="0.55" />
+            <text x="95" y="80" text-anchor="middle" fill="#1E3A8A" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[ɒ]</text>
+            <text x="95" y="95" text-anchor="middle" fill="#64748B" font-family="Inter, sans-serif" font-size="9.5">Rounded Vowel</text>
+
+            <!-- Voiceless Stop Closure Gap -->
+            <rect x="167" y="62" width="96" height="122" rx="6" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="3 3" stroke-width="1" />
+            <text x="215" y="80" text-anchor="middle" fill="#0F172A" font-family="Inter, sans-serif" font-size="10.5" font-weight="700">Stop Gap</text>
+            <text x="215" y="94" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="9">~70 ms Silence</text>
+
+            <!-- Plosive Release Burst [t] -->
+            <rect x="267" y="62" width="46" height="122" rx="6" fill="#DBEAFE" />
+            <text x="290" y="80" text-anchor="middle" fill="#1D4ED8" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[tʰ]</text>
+            <text x="290" y="94" text-anchor="middle" fill="#1E40AF" font-family="Inter, sans-serif" font-size="9">Burst</text>
+
+            <!-- Weak Vowel /əv/ -->
+            <rect x="317" y="62" width="110" height="122" rx="6" fill="#EFF6FF" fill-opacity="0.55" />
+            <text x="372" y="80" text-anchor="middle" fill="#1E3A8A" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[əv]</text>
+            <text x="372" y="95" text-anchor="middle" fill="#64748B" font-family="Inter, sans-serif" font-size="9.5">Linked Schwa</text>
+
+            <!-- Left Center Baseline -->
+            <line x1="28" y1="138" x2="427" y2="138" stroke="#CBD5E1" stroke-width="1" />
+
+            <!-- Left Waveform Trace -->
+            <!-- Periodic high-amplitude vowel /ɒ/ -->
+            <path
+              d="M 32 138 L 38 112 L 44 164 L 50 105 L 56 171 L 62 103 L 68 173 L 74 104 L 80 172 L 86 106 L 92 170 L 98 108 L 104 168 L 110 112 L 116 164 L 122 116 L 128 160 L 134 121 L 140 155 L 146 127 L 152 148 L 158 134 L 163 138
+                 L 267 138
+                 L 271 114 L 274 161 L 277 109 L 280 166 L 283 116 L 286 158 L 289 122 L 292 153 L 296 128 L 300 147 L 305 133 L 311 138
+                 L 318 138 L 324 120 L 330 156 L 336 115 L 342 161 L 348 114 L 354 162 L 360 117 L 366 159 L 372 121 L 378 155 L 384 125 L 390 151 L 396 129 L 402 147 L 408 132 L 414 143 L 422 138"
+              fill="none"
+              stroke="#2563EB"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+
+            <!-- Left Glottal Voicing Bar -->
+            <text x="28" y="206" fill="#475569" font-family="Inter, sans-serif" font-size="10" font-weight="600">
+              Glottal Voicing:
+            </text>
+            <rect x="28" y="214" width="135" height="12" rx="3" fill="#2563EB" />
+            <text x="95" y="223" text-anchor="middle" fill="#FFFFFF" font-family="Inter, sans-serif" font-size="8.5" font-weight="700">VOICED</text>
+
+            <rect x="167" y="214" width="146" height="12" rx="3" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1" />
+            <text x="240" y="223" text-anchor="middle" fill="#334155" font-family="Inter, sans-serif" font-size="8.5" font-weight="700">VOICELESS INTERVAL</text>
+
+            <rect x="317" y="214" width="110" height="12" rx="3" fill="#2563EB" />
+            <text x="372" y="223" text-anchor="middle" fill="#FFFFFF" font-family="Inter, sans-serif" font-size="8.5" font-weight="700">VOICED</text>
+
+            <text x="28" y="248" fill="#64748B" font-family="Inter, sans-serif" font-size="10">
+              Complete oral closure interrupts voicing before crisp alveolar release.
+            </text>
+
+            <!-- Right Panel Header: General American -->
+            <rect x="491" y="24" width="212" height="24" rx="6" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1" />
+            <text x="597" y="40" text-anchor="middle" fill="#4338CA" font-family="Inter, sans-serif" font-size="11.5" font-weight="700">
+              Audio B: General American /lɑː.ɾəv/
+            </text>
+
+            <!-- Right Panel Acoustic Regions -->
+            <!-- Vowel /ɑː/ zone -->
+            <rect x="493" y="62" width="168" height="122" rx="6" fill="#EEF2FF" fill-opacity="0.6" />
+            <text x="577" y="80" text-anchor="middle" fill="#312E81" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[ɑː]</text>
+            <text x="577" y="95" text-anchor="middle" fill="#64748B" font-family="Inter, sans-serif" font-size="9.5">Unrounded Open Vowel</text>
+
+            <!-- Brief Voiced Tap [ɾ] Dip -->
+            <rect x="665" y="62" width="54" height="122" rx="6" fill="#E0E7FF" stroke="#6366F1" stroke-dasharray="3 3" stroke-width="1" />
+            <text x="692" y="80" text-anchor="middle" fill="#4338CA" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[ɾ]</text>
+            <text x="692" y="94" text-anchor="middle" fill="#3730A3" font-family="Inter, sans-serif" font-size="9">~25 ms Dip</text>
+
+            <!-- Weak Vowel /əv/ -->
+            <rect x="723" y="62" width="169" height="122" rx="6" fill="#EEF2FF" fill-opacity="0.6" />
+            <text x="807" y="80" text-anchor="middle" fill="#312E81" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">[əv]</text>
+            <text x="807" y="95" text-anchor="middle" fill="#64748B" font-family="Inter, sans-serif" font-size="9.5">Linked Schwa</text>
+
+            <!-- Right Center Baseline -->
+            <line x1="493" y1="138" x2="892" y2="138" stroke="#CBD5E1" stroke-width="1" />
+
+            <!-- Right Waveform Trace: Continuous periodic oscillation with brief amplitude attenuation during [ɾ] -->
+            <path
+              d="M 497 138 L 503 110 L 509 166 L 515 102 L 521 174 L 527 100 L 533 176 L 539 100 L 545 176 L 551 101 L 557 175 L 563 102 L 569 174 L 575 103 L 581 173 L 587 104 L 593 172 L 599 106 L 605 170 L 611 108 L 617 168 L 623 110 L 629 166 L 635 113 L 641 163 L 647 117 L 653 159 L 659 122 L 665 154
+                 L 671 128 L 677 148 L 683 131 L 689 145 L 695 131 L 701 145 L 707 129 L 713 147 L 719 124
+                 L 725 152 L 731 118 L 737 158 L 743 114 L 749 162 L 755 113 L 761 163 L 767 114 L 773 162 L 779 116 L 785 160 L 791 118 L 797 158 L 803 121 L 809 155 L 815 123 L 821 153 L 827 126 L 833 150 L 839 128 L 845 148 L 851 130 L 857 146 L 863 132 L 869 144 L 875 134 L 881 142 L 887 138"
+              fill="none"
+              stroke="#4F46E5"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+
+            <!-- Right Continuous Glottal Voicing Bar -->
+            <text x="493" y="206" fill="#475569" font-family="Inter, sans-serif" font-size="10" font-weight="600">
+              Glottal Voicing:
+            </text>
+            <rect x="493" y="214" width="399" height="12" rx="3" fill="#4F46E5" />
+            <text x="692" y="223" text-anchor="middle" fill="#FFFFFF" font-family="Inter, sans-serif" font-size="8.5" font-weight="700">
+              UNINTERRUPTED CONTINUOUS VOICING
+            </text>
+
+            <text x="493" y="248" fill="#64748B" font-family="Inter, sans-serif" font-size="10">
+              Ballistic tongue-tip tap briefly attenuates amplitude without stopping vocal fold vibration.
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Structured Phonological Comparison Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-200/90">
+        <table class="w-full text-left border-collapse text-xs sm:text-sm">
+          <thead>
+            <tr class="bg-[#0F172A] text-white">
+              <th scope="col" class="py-3.5 px-4 font-semibold tracking-wide w-1/4">
+                Phonetic Dimension
+              </th>
+              <th scope="col" class="py-3.5 px-4 font-semibold tracking-wide w-[37.5%] border-l border-slate-700">
+                British English (RP) &mdash; Audio A
+              </th>
+              <th scope="col" class="py-3.5 px-4 font-semibold tracking-wide w-[37.5%] border-l border-slate-700">
+                General American (GA) &mdash; Audio B
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 bg-white">
+            <tr class="hover:bg-slate-50/80 transition">
+              <th scope="row" class="py-3.5 px-4 font-semibold text-[#0F172A] bg-slate-50/70">
+                Orthographic Cue
+              </th>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-semibold text-[#0F172A]">a lo<u>t o</u>f</span> <span class="text-xs text-slate-500">(catenated across word boundary)</span>
+              </td>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-semibold text-[#0F172A]">a lo<u>t o</u>f</span> <span class="text-xs text-slate-500">(perceptually akin to <em>"a lod of"</em>)</span>
+              </td>
+            </tr>
+            <tr class="hover:bg-slate-50/80 transition">
+              <th scope="row" class="py-3.5 px-4 font-semibold text-[#0F172A] bg-slate-50/70">
+                Phonemic / Narrow IPA
+              </th>
+              <td class="py-3.5 px-4 border-l border-slate-200 font-ipa font-semibold text-blue-700">
+                /ə ˈlɒt əv/ &rarr; [ə ˈlɒ.tʰəv]
+              </td>
+              <td class="py-3.5 px-4 border-l border-slate-200 font-ipa font-semibold text-indigo-700">
+                /ə ˈlɑːt əv/ &rarr; [ə ˈlɑː.ɾəv]
+              </td>
+            </tr>
+            <tr class="hover:bg-slate-50/80 transition">
+              <th scope="row" class="py-3.5 px-4 font-semibold text-[#0F172A] bg-slate-50/70">
+                Stressed Vowel
+              </th>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-ipa font-semibold text-blue-700">/ɒ/</span> &mdash; Short open back rounded vowel (lip rounding lowers F2)
+              </td>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-ipa font-semibold text-indigo-700">/ɑː/</span> &mdash; Open back unrounded vowel (neutral lips, open jaw)
+              </td>
+            </tr>
+            <tr class="hover:bg-slate-50/80 transition">
+              <th scope="row" class="py-3.5 px-4 font-semibold text-[#0F172A] bg-slate-50/70">
+                Intervocalic /t/ Mechanism
+              </th>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-semibold text-[#0F172A]">Voiceless alveolar plosive <code class="font-ipa text-blue-700">[t]</code>:</span> Full oral seal, pressure buildup, and clean aspirated release into <span class="font-ipa">/əv/</span>
+              </td>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="font-semibold text-[#0F172A]">Voiced alveolar tap <code class="font-ipa text-indigo-700">[ɾ]</code>:</span> Ballistic single tongue-tip tap (~20&ndash;30 ms) against alveolar ridge without pressure buildup
+              </td>
+            </tr>
+            <tr class="hover:bg-slate-50/80 transition">
+              <th scope="row" class="py-3.5 px-4 font-semibold text-[#0F172A] bg-slate-50/70">
+                Voicing State
+              </th>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold text-xs">Voiceless</span> &mdash; Vocal fold vibration ceases during stop closure
+              </td>
+              <td class="py-3.5 px-4 border-l border-slate-200">
+                <span class="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 font-semibold text-xs">Voiced</span> &mdash; Vocal folds vibrate continuously from <span class="font-ipa">/ɑː/</span> through <span class="font-ipa">[ɾ]</span> into <span class="font-ipa">/əv/</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Minimal University Lab Footer -->
+  <footer class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-400">
+    Connected Speech Phonetics Lab &bull; Dual-Engine Web Speech &amp; Web Audio API Formant Synthesizer
+  </footer>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. PHONETIC UTTERANCE DATA & TRANSCRIPTIONS
+     * ============================================================================
+     */
+    const UTTERANCE_MODES = {
+      phrase: {
+        tagLabel: 'Target: "a lot of"',
+        uk: {
+          html: 'a lo<span class="text-blue-600 underline decoration-blue-300 decoration-2 underline-offset-4">t o</span>f',
+          speakText: 'a lot of',
+          citationIPA: '/ə ˈlɒt əv/',
+          catenatedIPA: '/ə ˈlɒ.təv/'
+        },
+        us: {
+          html: 'a lo<span class="text-indigo-600 underline decoration-indigo-300 decoration-2 underline-offset-4">t o</span>f',
+          speakText: 'a lot of',
+          citationIPA: '/ə ˈlɑːɾ əv/',
+          catenatedIPA: '/ə ˈlɑː.ɾəv/'
+        }
+      },
+      sentence: {
+        tagLabel: 'Target: "There is a lot of truth in that."',
+        uk: {
+          html: 'There is a lo<span class="text-blue-600 underline decoration-blue-300 decoration-2 underline-offset-4">t o</span>f truth in that.',
+          speakText: 'There is a lot of truth in that.',
+          citationIPA: '/ðeər ɪz ə ˈlɒt əv truːθ ɪn ðæt/',
+          catenatedIPA: '/ðeə.rɪ.zə ˈlɒ.təv truːθ ɪn ðæt/'
+        },
+        us: {
+          html: 'There is a lo<span class="text-indigo-600 underline decoration-indigo-300 decoration-2 underline-offset-4">t o</span>f truth in that.',
+          speakText: 'There is a lot of truth in that.',
+          citationIPA: '/ðer ɪz ə ˈlɑːɾ əv truːθ ɪn ðæt/',
+          catenatedIPA: '/ðe.rɪ.zə ˈlɑː.ɾəv truːθ ɪn ðæt/'
+        }
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 2. ENGINE 2: WEB AUDIO API ACOUSTIC FORMANT & PLOSIVE/TAP SYNTHESIZER
+     * Uses a glottal pulse source routed through parallel F1/F2/F3 biquad
+     * bandpass filters plus shaped noise bursts to model:
+     *   - Audio A (UK): /ə/ -> /ɒ/ + silent closure gap + burst [t] -> /əv/
+     *   - Audio B (US): /ə/ -> /ɑː/ + brief voiced amplitude/formant dip [ɾ] -> /əv/
+     * ============================================================================
+     */
+    class AcousticFormantSynthesizer {
+      constructor() {
+        this.audioCtx = null;
+        this.scheduledNodes = [];
+        this.completionTimer = null;
+      }
+
+      getContext() {
+        if (!this.audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            this.audioCtx = new AudioContextClass();
+          }
+        }
+        if (this.audioCtx && this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume();
+        }
+        return this.audioCtx;
+      }
+
+      stop() {
+        if (this.completionTimer) {
+          clearTimeout(this.completionTimer);
+          this.completionTimer = null;
+        }
+        this.scheduledNodes.forEach((node) => {
+          try {
+            if (typeof node.stop === 'function') {
+              node.stop();
+            }
+            node.disconnect();
+          } catch (err) {
+            // Node already finished or disconnected
+          }
+        });
+        this.scheduledNodes = [];
+      }
+
+      buildWhiteNoiseBuffer(ctx, durationSec) {
+        const sampleRate = ctx.sampleRate;
+        const frameCount = Math.max(1, Math.floor(sampleRate * durationSec));
+        const buffer = ctx.createBuffer(1, frameCount, sampleRate);
+        const channel = buffer.getChannelData(0);
+        for (let i = 0; i < frameCount; i++) {
+          channel[i] = Math.random() * 2 - 1;
+        }
+        return buffer;
+      }
+
+      /**
+       * Schedules a voiced segment with F1, F2, and F3 formant resonators
+       */
+      scheduleVoicedFormants(ctx, startTime, duration, config) {
+        const {
+          f0Start = 136,
+          f0End = 126,
+          f1 = 500,
+          f2 = 1500,
+          f3 = 2500,
+          amplitude = 0.28,
+          attack = 0.014,
+          release = 0.018,
+          applyTapContour = false
+        } = config;
+
+        // Glottal pulse train approximation
+        const glottalOsc = ctx.createOscillator();
+        glottalOsc.type = 'sawtooth';
+        glottalOsc.frequency.setValueAtTime(f0Start, startTime);
+        glottalOsc.frequency.linearRampToValueAtTime(f0End, startTime + duration);
+
+        // Parallel formant filters (F1, F2, F3)
+        const filterF1 = ctx.createBiquadFilter();
+        filterF1.type = 'bandpass';
+        filterF1.frequency.setValueAtTime(f1, startTime);
+        filterF1.Q.setValueAtTime(6.5, startTime);
+
+        const filterF2 = ctx.createBiquadFilter();
+        filterF2.type = 'bandpass';
+        filterF2.frequency.setValueAtTime(f2, startTime);
+        filterF2.Q.setValueAtTime(8.5, startTime);
+
+        const filterF3 = ctx.createBiquadFilter();
+        filterF3.type = 'bandpass';
+        filterF3.frequency.setValueAtTime(f3, startTime);
+        filterF3.Q.setValueAtTime(10.0, startTime);
+
+        // Relative formant spectral tilt weights
+        const gainF1 = ctx.createGain();
+        gainF1.gain.value = 1.0;
+
+        const gainF2 = ctx.createGain();
+        gainF2.gain.value = 0.65;
+
+        const gainF3 = ctx.createGain();
+        gainF3.gain.value = 0.24;
+
+        // For the voiced alveolar tap [ɾ], dip F1 rapidly and raise F2 toward alveolar locus (~1700 Hz)
+        if (applyTapContour) {
+          const midpoint = startTime + duration * 0.5;
+          filterF1.frequency.setValueAtTime(f1, startTime);
+          filterF1.frequency.exponentialRampToValueAtTime(260, midpoint);
+          filterF1.frequency.exponentialRampToValueAtTime(f1, startTime + duration);
+
+          filterF2.frequency.setValueAtTime(f2, startTime);
+          filterF2.frequency.exponentialRampToValueAtTime(1700, midpoint);
+          filterF2.frequency.exponentialRampToValueAtTime(f2, startTime + duration);
+        }
+
+        // Amplitude envelope
+        const envelope = ctx.createGain();
+        envelope.gain.setValueAtTime(0.0001, startTime);
+        envelope.gain.linearRampToValueAtTime(amplitude, startTime + Math.min(attack, duration * 0.4));
+        envelope.gain.setValueAtTime(amplitude, Math.max(startTime + attack, startTime + duration - release));
+        envelope.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        glottalOsc.connect(filterF1);
+        glottalOsc.connect(filterF2);
+        glottalOsc.connect(filterF3);
+
+        filterF1.connect(gainF1);
+        filterF2.connect(gainF2);
+        filterF3.connect(gainF3);
+
+        gainF1.connect(envelope);
+        gainF2.connect(envelope);
+        gainF3.connect(envelope);
+        envelope.connect(ctx.destination);
+
+        glottalOsc.start(startTime);
+        glottalOsc.stop(startTime + duration + 0.01);
+
+        this.scheduledNodes.push(glottalOsc, envelope);
+      }
+
+      /**
+       * Schedules an unvoiced aspiration burst or fricative noise segment
+       */
+      scheduleNoiseSegment(ctx, startTime, duration, config) {
+        const { centerFreq = 3800, q = 2.1, amplitude = 0.2 } = config;
+
+        const noiseSource = ctx.createBufferSource();
+        noiseSource.buffer = this.buildWhiteNoiseBuffer(ctx, duration + 0.02);
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(centerFreq, startTime);
+        bandpass.Q.setValueAtTime(q, startTime);
+
+        const envelope = ctx.createGain();
+        envelope.gain.setValueAtTime(0.0001, startTime);
+        envelope.gain.linearRampToValueAtTime(amplitude, startTime + Math.min(0.005, duration * 0.25));
+        envelope.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        noiseSource.connect(bandpass);
+        bandpass.connect(envelope);
+        envelope.connect(ctx.destination);
+
+        noiseSource.start(startTime);
+        noiseSource.stop(startTime + duration + 0.01);
+
+        this.scheduledNodes.push(noiseSource, envelope);
+      }
+
+      /**
+       * Synthesizes Audio A (UK) or Audio B (US) across Phrase or Sentence mode
+       */
+      play(accent, mode, rate = 1.0, onEnded) {
+        this.stop();
+        const ctx = this.getContext();
+        if (!ctx) {
+          if (onEnded) onEnded();
+          return;
+        }
+
+        const timeScale = 1 / rate;
+        let cursor = ctx.currentTime + 0.03;
+
+        // Optional leading context: "There is"
+        if (mode === 'sentence') {
+          this.scheduleVoicedFormants(ctx, cursor, 0.125 * timeScale, {
+            f0Start: 136, f0End: 142, f1: 490, f2: 1740, f3: 2550, amplitude: 0.19
+          });
+          cursor += 0.13 * timeScale;
+
+          this.scheduleVoicedFormants(ctx, cursor, 0.105 * timeScale, {
+            f0Start: 140, f0End: 138, f1: 410, f2: 1920, f3: 2600, amplitude: 0.19
+          });
+          cursor += 0.11 * timeScale;
+        }
+
+        // 1. Unstressed schwa "a" /ə/
+        this.scheduleVoicedFormants(ctx, cursor, 0.08 * timeScale, {
+          f0Start: 136, f0End: 142, f1: 500, f2: 1500, f3: 2500, amplitude: 0.21
+        });
+        cursor += 0.082 * timeScale;
+
+        // 2. Alveolar lateral approximant /l/
+        this.scheduleVoicedFormants(ctx, cursor, 0.075 * timeScale, {
+          f0Start: 146, f0End: 156, f1: 350, f2: 1080, f3: 2650, amplitude: 0.23
+        });
+        cursor += 0.072 * timeScale;
+
+        if (accent === 'uk') {
+          // 3A. British short open back rounded vowel /ɒ/ (lower F1 & F2 from lip rounding)
+          this.scheduleVoicedFormants(ctx, cursor, 0.13 * timeScale, {
+            f0Start: 170, f0End: 148, f1: 575, f2: 870, f3: 2450, amplitude: 0.31, release: 0.012
+          });
+          cursor += 0.13 * timeScale;
+
+          // 4A. British voiceless alveolar plosive [t]:
+          // Silent voiceless closure gap followed by crisp high-frequency burst
+          const voicelessStopGap = 0.072 * timeScale;
+          cursor += voicelessStopGap;
+
+          this.scheduleNoiseSegment(ctx, cursor, 0.038 * timeScale, {
+            centerFreq: 3850, q: 2.0, amplitude: 0.23
+          });
+          cursor += 0.036 * timeScale;
+        } else {
+          // 3B. American open back unrounded vowel /ɑː/ (higher F1 & F2, open jaw)
+          this.scheduleVoicedFormants(ctx, cursor, 0.165 * timeScale, {
+            f0Start: 168, f0End: 146, f1: 745, f2: 1130, f3: 2480, amplitude: 0.31, release: 0.008
+          });
+          cursor += 0.162 * timeScale;
+
+          // 4B. American voiced alveolar tap [ɾ]:
+          // Continuous glottal voicing with brief 28ms amplitude & formant dip
+          this.scheduleVoicedFormants(ctx, cursor, 0.030 * timeScale, {
+            f0Start: 145, f0End: 140, f1: 310, f2: 1600, f3: 2460, amplitude: 0.14,
+            attack: 0.004, release: 0.004, applyTapContour: true
+          });
+          cursor += 0.028 * timeScale;
+        }
+
+        // 5. Connected weak schwa in "of" /əv/
+        this.scheduleVoicedFormants(ctx, cursor, 0.095 * timeScale, {
+          f0Start: 138, f0End: 126, f1: 500, f2: 1460, f3: 2500, amplitude: 0.22, attack: 0.008
+        });
+        cursor += 0.09 * timeScale;
+
+        // Voiced labiodental fricative /v/
+        this.scheduleVoicedFormants(ctx, cursor, 0.065 * timeScale, {
+          f0Start: 125, f0End: 118, f1: 310, f2: 1200, f3: 2400, amplitude: 0.11
+        });
+        this.scheduleNoiseSegment(ctx, cursor, 0.065 * timeScale, {
+          centerFreq: 2200, q: 1.5, amplitude: 0.05
+        });
+        cursor += 0.07 * timeScale;
+
+        // Optional trailing context: "truth in that."
+        if (mode === 'sentence') {
+          cursor += 0.02 * timeScale;
+          // "truth"
+          this.scheduleNoiseSegment(ctx, cursor, 0.035 * timeScale, {
+            centerFreq: 3600, q: 2.0, amplitude: 0.14
+          });
+          cursor += 0.032 * timeScale;
+
+          this.scheduleVoicedFormants(ctx, cursor, 0.165 * timeScale, {
+            f0Start: 156, f0End: 132, f1: 330, f2: 960, f3: 2300, amplitude: 0.27
+          });
+          cursor += 0.165 * timeScale;
+
+          this.scheduleNoiseSegment(ctx, cursor, 0.068 * timeScale, {
+            centerFreq: 4800, q: 1.4, amplitude: 0.09
+          });
+          cursor += 0.072 * timeScale;
+
+          // "in"
+          this.scheduleVoicedFormants(ctx, cursor, 0.09 * timeScale, {
+            f0Start: 130, f0End: 124, f1: 410, f2: 1880, f3: 2550, amplitude: 0.18
+          });
+          cursor += 0.095 * timeScale;
+
+          // "that"
+          this.scheduleVoicedFormants(ctx, cursor, 0.155 * timeScale, {
+            f0Start: 124, f0End: 102, f1: 680, f2: 1680, f3: 2480, amplitude: 0.24
+          });
+          cursor += 0.16 * timeScale;
+
+          this.scheduleNoiseSegment(ctx, cursor, 0.03 * timeScale, {
+            centerFreq: 3700, q: 2.0, amplitude: 0.12
+          });
+          cursor += 0.035 * timeScale;
+        }
+
+        const totalDurationMs = Math.max(260, (cursor - ctx.currentTime) * 1000 + 45);
+        this.completionTimer = setTimeout(() => {
+          this.completionTimer = null;
+          if (onEnded) onEnded();
+        }, totalDurationMs);
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 3. DUAL-ENGINE LAB CONTROLLER & UI ORCHESTRATOR
+     * ============================================================================
+     */
+    class ConnectedSpeechLabController {
+      constructor() {
+        this.contextMode = 'phrase';   // 'phrase' | 'sentence'
+        this.engineMode = 'hybrid';    // 'hybrid' | 'synth'
+        this.allVoices = [];
+        this.ukVoices = [];
+        this.usVoices = [];
+
+        this.formantSynth = new AcousticFormantSynthesizer();
+        this.isSequentialRunning = false;
+        this.sequenceDelayTimer = null;
+        this.ttsWatchdogTimer = null;
+
+        this.bindDOM();
+        this.attachListeners();
+        this.loadSpeechVoices();
+      }
+
+      bindDOM() {
+        // Header status badge
+        this.statusDot = document.getElementById('engine-status-dot');
+        this.statusLabel = document.getElementById('engine-status-label');
+
+        // Controls bar
+        this.btnModePhrase = document.getElementById('btn-mode-phrase');
+        this.btnModeSentence = document.getElementById('btn-mode-sentence');
+        this.btnEngineHybrid = document.getElementById('btn-engine-hybrid');
+        this.btnEngineSynth = document.getElementById('btn-engine-synth');
+        this.selectVoiceUK = document.getElementById('select-voice-uk');
+        this.selectVoiceUS = document.getElementById('select-voice-us');
+        this.contextPreviewTag = document.getElementById('context-preview-tag');
+
+        // Sequential comparison bar
+        this.btnCompareSequential = document.getElementById('btn-compare-sequential');
+        this.labelCompareSequential = document.getElementById('label-compare-sequential');
+        this.btnStopPlayback = document.getElementById('btn-stop-playback');
+        this.seqPillA = document.getElementById('seq-pill-a');
+        this.seqPillPause = document.getElementById('seq-pill-pause');
+        this.seqPillB = document.getElementById('seq-pill-b');
+
+        // Card A (UK)
+        this.cardAudioA = document.getElementById('card-audio-a');
+        this.visualizerUK = document.getElementById('visualizer-uk');
+        this.utteranceUK = document.getElementById('utterance-uk');
+        this.ipaCitationUK = document.getElementById('ipa-citation-uk');
+        this.ipaCatenatedUK = document.getElementById('ipa-catenated-uk');
+
+        // Card B (US)
+        this.cardAudioB = document.getElementById('card-audio-b');
+        this.visualizerUS = document.getElementById('visualizer-us');
+        this.utteranceUS = document.getElementById('utterance-us');
+        this.ipaCitationUS = document.getElementById('ipa-citation-us');
+        this.ipaCatenatedUS = document.getElementById('ipa-catenated-us');
+      }
+
+      attachListeners() {
+        // Context mode toggles
+        this.btnModePhrase.addEventListener('click', () => this.switchContextMode('phrase'));
+        this.btnModeSentence.addEventListener('click', () => this.switchContextMode('sentence'));
+
+        // Audio engine toggles
+        this.btnEngineHybrid.addEventListener('click', () => this.switchEngineMode('hybrid'));
+        this.btnEngineSynth.addEventListener('click', () => this.switchEngineMode('synth'));
+
+        // Sequential A -> B comparison
+        this.btnCompareSequential.addEventListener('click', () => this.runSequentialComparison());
+
+        // Stop playback
+        this.btnStopPlayback.addEventListener('click', () => this.stopAllPlayback());
+
+        // Individual card play buttons (Normal 1.0x and Slow 0.65x)
+        document.querySelectorAll('.btn-play-single').forEach((button) => {
+          button.addEventListener('click', () => {
+            const accent = button.getAttribute('data-accent');
+            const rate = parseFloat(button.getAttribute('data-rate') || '1.0');
+            this.stopAllPlayback();
+            this.playUtterance(accent, rate);
+          });
+        });
+      }
+
+      loadSpeechVoices() {
+        if (!('speechSynthesis' in window)) {
+          this.renderVoiceSelectors();
+          this.refreshEngineStatusBadge();
+          return;
+        }
+
+        const populate = () => {
+          const voices = window.speechSynthesis.getVoices() || [];
+          if (voices.length > 0) {
+            this.allVoices = voices;
+            this.ukVoices = this.prioritizeVoices(voices, 'en-GB', [
+              'libby', 'ryan', 'sonia', 'daniel', 'serena', 'google uk english'
+            ]);
+            this.usVoices = this.prioritizeVoices(voices, 'en-US', [
+              'jenny', 'aria', 'guy', 'samantha', 'alex', 'google us english'
+            ]);
+            this.renderVoiceSelectors();
+            this.refreshEngineStatusBadge();
+          }
+        };
+
+        populate();
+        window.speechSynthesis.onvoiceschanged = populate;
+
+        // Guarantee UI initialization even if browser never fires onvoiceschanged
+        setTimeout(() => {
+          if (this.allVoices.length === 0) {
+            this.renderVoiceSelectors();
+            this.refreshEngineStatusBadge();
+          }
+        }, 650);
+      }
+
+      prioritizeVoices(voices, langPrefix, preferredNames) {
+        const prefix = langPrefix.toLowerCase();
+        const filtered = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(prefix));
+        return filtered.sort((a, b) => {
+          const nameA = a.name.toLowerCase();
+          const nameB = b.name.toLowerCase();
+          const matchA = preferredNames.some((kw) => nameA.includes(kw)) ? 1 : 0;
+          const matchB = preferredNames.some((kw) => nameB.includes(kw)) ? 1 : 0;
+          return matchB - matchA;
+        });
+      }
+
+      renderVoiceSelectors() {
+        // Populate UK dropdown
+        this.selectVoiceUK.innerHTML = '';
+        if (this.ukVoices.length > 0) {
+          this.ukVoices.forEach((voice, idx) => {
+            const option = document.createElement('option');
+            option.value = String(idx);
+            option.textContent = `${voice.name} (${voice.lang})`;
+            this.selectVoiceUK.appendChild(option);
+          });
+        } else {
+          const fallbackOpt = document.createElement('option');
+          fallbackOpt.value = 'synth';
+          fallbackOpt.textContent = 'Web Audio Formant Synth (RP /t/)';
+          this.selectVoiceUK.appendChild(fallbackOpt);
+        }
+
+        // Populate US dropdown
+        this.selectVoiceUS.innerHTML = '';
+        if (this.usVoices.length > 0) {
+          this.usVoices.forEach((voice, idx) => {
+            const option = document.createElement('option');
+            option.value = String(idx);
+            option.textContent = `${voice.name} (${voice.lang})`;
+            this.selectVoiceUS.appendChild(option);
+          });
+        } else {
+          const fallbackOpt = document.createElement('option');
+          fallbackOpt.value = 'synth';
+          fallbackOpt.textContent = 'Web Audio Formant Synth (GA [ɾ])';
+          this.selectVoiceUS.appendChild(fallbackOpt);
+        }
+      }
+
+      refreshEngineStatusBadge() {
+        const hasNativeDualVoices = this.ukVoices.length > 0 && this.usVoices.length > 0;
+
+        if (this.engineMode === 'synth') {
+          this.statusDot.className = 'w-2 h-2 rounded-full bg-indigo-400';
+          this.statusLabel.textContent = 'Engine: Acoustic Formant Synthesizer';
+        } else if (hasNativeDualVoices) {
+          this.statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          this.statusLabel.textContent = 'Engine: Hybrid Ready (en-GB & en-US TTS)';
+        } else {
+          this.statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+          this.statusLabel.textContent = 'Engine: Hybrid Ready (Acoustic Fallback Active)';
+        }
+      }
+
+      switchContextMode(newMode) {
+        this.stopAllPlayback();
+        this.contextMode = newMode;
+
+        const isPhrase = newMode === 'phrase';
+        this.btnModePhrase.setAttribute('aria-pressed', String(isPhrase));
+        this.btnModeSentence.setAttribute('aria-pressed', String(!isPhrase));
+
+        this.btnModePhrase.className = isPhrase
+          ? 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]'
+          : 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]';
+
+        this.btnModeSentence.className = !isPhrase
+          ? 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]'
+          : 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]';
+
+        const payload = UTTERANCE_MODES[newMode];
+        this.contextPreviewTag.textContent = payload.tagLabel;
+
+        this.utteranceUK.innerHTML = payload.uk.html;
+        this.ipaCitationUK.textContent = payload.uk.citationIPA;
+        this.ipaCatenatedUK.textContent = payload.uk.catenatedIPA;
+
+        this.utteranceUS.innerHTML = payload.us.html;
+        this.ipaCitationUS.textContent = payload.us.citationIPA;
+        this.ipaCatenatedUS.textContent = payload.us.catenatedIPA;
+      }
+
+      switchEngineMode(newEngine) {
+        this.stopAllPlayback();
+        this.engineMode = newEngine;
+
+        const isHybrid = newEngine === 'hybrid';
+        this.btnEngineHybrid.setAttribute('aria-pressed', String(isHybrid));
+        this.btnEngineSynth.setAttribute('aria-pressed', String(!isHybrid));
+
+        this.btnEngineHybrid.className = isHybrid
+          ? 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]'
+          : 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]';
+
+        this.btnEngineSynth.className = !isHybrid
+          ? 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F172A] shadow-sm transition cursor-pointer min-h-[38px]'
+          : 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-[#0F172A] transition cursor-pointer min-h-[38px]';
+
+        this.refreshEngineStatusBadge();
+      }
+
+      setCardPlaybackState(activeAccent) {
+        // Reset UK card
+        this.cardAudioA.classList.remove('border-blue-600', 'ring-4', 'ring-blue-500/15', 'shadow-md');
+        this.cardAudioA.classList.add('border-slate-200/90');
+        this.visualizerUK.classList.remove('is-playing');
+
+        // Reset US card
+        this.cardAudioB.classList.remove('border-indigo-600', 'ring-4', 'ring-indigo-500/15', 'shadow-md');
+        this.cardAudioB.classList.add('border-slate-200/90');
+        this.visualizerUS.classList.remove('is-playing');
+
+        if (activeAccent === 'uk') {
+          this.cardAudioA.classList.remove('border-slate-200/90');
+          this.cardAudioA.classList.add('border-blue-600', 'ring-4', 'ring-blue-500/15', 'shadow-md');
+          this.visualizerUK.classList.add('is-playing');
+          this.btnStopPlayback.disabled = false;
+        } else if (activeAccent === 'us') {
+          this.cardAudioB.classList.remove('border-slate-200/90');
+          this.cardAudioB.classList.add('border-indigo-600', 'ring-4', 'ring-indigo-500/15', 'shadow-md');
+          this.visualizerUS.classList.add('is-playing');
+          this.btnStopPlayback.disabled = false;
+        } else if (!this.isSequentialRunning) {
+          this.btnStopPlayback.disabled = true;
+        }
+      }
+
+      updateSequentialPills(stage) {
+        const basePill = 'px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-400 font-medium transition';
+        const basePause = 'px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-400 font-ipa text-[11px] transition';
+
+        this.seqPillA.className = basePill;
+        this.seqPillPause.className = basePause;
+        this.seqPillB.className = basePill;
+
+        if (stage === 'a') {
+          this.seqPillA.className = 'px-2.5 py-1 rounded-md bg-blue-600 border border-blue-400 text-white font-semibold transition';
+        } else if (stage === 'pause') {
+          this.seqPillPause.className = 'px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-400 text-amber-200 font-ipa text-[11px] font-semibold transition';
+        } else if (stage === 'b') {
+          this.seqPillB.className = 'px-2.5 py-1 rounded-md bg-indigo-600 border border-indigo-400 text-white font-semibold transition';
+        }
+      }
+
+      stopAllPlayback() {
+        this.isSequentialRunning = false;
+
+        if (this.sequenceDelayTimer) {
+          clearTimeout(this.sequenceDelayTimer);
+          this.sequenceDelayTimer = null;
+        }
+        if (this.ttsWatchdogTimer) {
+          clearTimeout(this.ttsWatchdogTimer);
+          this.ttsWatchdogTimer = null;
+        }
+
+        if ('speechSynthesis' in window) {
+          try {
+            window.speechSynthesis.cancel();
+          } catch (err) {
+            // Ignore sandboxed cancel errors
+          }
+        }
+
+        this.formantSynth.stop();
+        this.setCardPlaybackState(null);
+        this.updateSequentialPills(null);
+        this.labelCompareSequential.textContent = 'Compare A \u2192 B (Sequential)';
+      }
+
+      playUtterance(accent, rate = 1.0, onComplete = null) {
+        const data = UTTERANCE_MODES[this.contextMode][accent];
+        const voicePool = accent === 'uk' ? this.ukVoices : this.usVoices;
+        const selector = accent === 'uk' ? this.selectVoiceUK : this.selectVoiceUS;
+        const selectedIndex = parseInt(selector.value, 10);
+        const chosenVoice = !Number.isNaN(selectedIndex) ? voicePool[selectedIndex] : null;
+
+        const shouldUseTTS =
+          this.engineMode === 'hybrid' &&
+          'speechSynthesis' in window &&
+          chosenVoice !== null &&
+          chosenVoice !== undefined;
+
+        this.setCardPlaybackState(accent);
+
+        const finishPlayback = () => {
+          if (this.ttsWatchdogTimer) {
+            clearTimeout(this.ttsWatchdogTimer);
+            this.ttsWatchdogTimer = null;
+          }
+          if (!this.isSequentialRunning) {
+            this.setCardPlaybackState(null);
+          }
+          if (onComplete) {
+            onComplete();
+          }
+        };
+
+        if (!shouldUseTTS) {
+          this.formantSynth.play(accent, this.contextMode, rate, finishPlayback);
+          return;
+        }
+
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(data.speakText);
+          utterance.voice = chosenVoice;
+          utterance.lang = accent === 'uk' ? 'en-GB' : 'en-US';
+          utterance.rate = rate;
+          utterance.pitch = 1.0;
+
+          let hasStarted = false;
+          let hasFinished = false;
+
+          utterance.onstart = () => {
+            hasStarted = true;
+            if (this.ttsWatchdogTimer) {
+              clearTimeout(this.ttsWatchdogTimer);
+              this.ttsWatchdogTimer = null;
+            }
+          };
+
+          utterance.onend = () => {
+            if (hasFinished) return;
+            hasFinished = true;
+            finishPlayback();
+          };
+
+          utterance.onerror = () => {
+            if (hasFinished) return;
+            hasFinished = true;
+            this.formantSynth.play(accent, this.contextMode, rate, finishPlayback);
+          };
+
+          window.speechSynthesis.speak(utterance);
+
+          // Watchdog fallback if browser TTS stalls in restricted environments
+          this.ttsWatchdogTimer = setTimeout(() => {
+            if (!hasStarted && !hasFinished) {
+              hasFinished = true;
+              try {
+                window.speechSynthesis.cancel();
+              } catch (err) {
+                // Ignore cancel errors
+              }
+              this.formantSynth.play(accent, this.contextMode, rate, finishPlayback);
+            }
+          }, 450);
+        } catch (err) {
+          this.formantSynth.play(accent, this.contextMode, rate, finishPlayback);
+        }
+      }
+
+      runSequentialComparison() {
+        this.stopAllPlayback();
+        this.isSequentialRunning = true;
+        this.btnStopPlayback.disabled = false;
+        this.labelCompareSequential.textContent = 'Playing Sequence (A \u2192 B)...';
+        this.updateSequentialPills('a');
+
+        // Step 1: Play Audio A (British English RP)
+        this.playUtterance('uk', 1.0, () => {
+          if (!this.isSequentialRunning) return;
+
+          // Step 2: 800ms visual & acoustic pause
+          this.setCardPlaybackState(null);
+          this.btnStopPlayback.disabled = false;
+          this.updateSequentialPills('pause');
+
+          this.sequenceDelayTimer = setTimeout(() => {
+            if (!this.isSequentialRunning) return;
+
+            // Step 3: Play Audio B (General American GA)
+            this.updateSequentialPills('b');
+            this.playUtterance('us', 1.0, () => {
+              this.stopAllPlayback();
+            });
+          }, 800);
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      new ConnectedSpeechLabController();
+    });
+  </script>
+</body>
+</html>
